@@ -458,7 +458,7 @@ class App2DFix(ctk.CTk):
             self.var_entrada.set(caminho)
             if not self.var_saida.get():
                 base, ext = os.path.splitext(caminho)
-                self.var_saida.set(f"{base}_corrigido{ext}")
+                self.var_saida.set(f"{base}_2dfix{ext}")
 
     def _selecionar_saida(self):
         caminho = filedialog.asksaveasfilename(
@@ -513,9 +513,8 @@ class App2DFix(ctk.CTk):
             self._show_error("Informe ao menos uma substituição.")
             return
 
-        # Auto-rename se o arquivo de saída já existir
+        # Gera nome único sem atualizar o campo (evita empilhamento em rodadas seguintes)
         caminho_saida = self._gerar_nome_unico(caminho_saida)
-        self.var_saida.set(caminho_saida)
 
         self.btn_corrigir.configure(state="disabled", text="Processando…", fg_color=self._t["disabled_btn"])
         self._progress.pack(fill="x", pady=(10, 0))
@@ -530,14 +529,27 @@ class App2DFix(ctk.CTk):
 
     @staticmethod
     def _gerar_nome_unico(caminho: str) -> str:
-        """Se o arquivo já existe, adiciona _1, _2, ... até encontrar um nome livre."""
-        if not os.path.exists(caminho):
-            return caminho
+        """
+        Gera um nome de arquivo único com branding 2dfix.
+        Ex.: relatorio_2dfix.txt → relatorio_2dfix_2.txt → relatorio_2dfix_3.txt
+        Nunca empilha sufixos (_2dfix_2_2dfix_3, etc.).
+        """
+        import re
         base, ext = os.path.splitext(caminho)
-        i = 1
-        while os.path.exists(f"{base}_{i}{ext}"):
+
+        # Remove qualquer sufixo _2dfix(_N)? existente para partir do nome limpo
+        base_limpo = re.sub(r'_2dfix(_\d+)?$', '', base, flags=re.IGNORECASE)
+
+        # Nome preferido: sempre termina em _2dfix
+        candidato = f"{base_limpo}_2dfix"
+
+        if not os.path.exists(f"{candidato}{ext}"):
+            return f"{candidato}{ext}"
+
+        i = 2
+        while os.path.exists(f"{candidato}_{i}{ext}"):
             i += 1
-        return f"{base}_{i}{ext}"
+        return f"{candidato}_{i}{ext}"
 
     def _processar_thread(self, caminho_entrada, caminho_saida, mapeamentos):
         try:
@@ -583,6 +595,7 @@ class App2DFix(ctk.CTk):
 
         self._lbl_result.configure(text=resumo, text_color=SUCCESS)
         self._result_frame.pack(fill="x", pady=(14, 0))
+        self._tocar_conclusao()
 
     def _on_error(self, msg: str):
         self._finish_progress()
@@ -600,6 +613,19 @@ class App2DFix(ctk.CTk):
     def _abrir_arquivo(self):
         if self._last_output_path and os.path.isfile(self._last_output_path):
             _open_file(self._last_output_path)
+
+    @staticmethod
+    def _tocar_conclusao():
+        """Toca um chime suave de 3 notas (Dó-Mi-Sol) ao concluir a correção."""
+        def _play():
+            try:
+                import winsound
+                winsound.Beep(1047, 70)   # C6
+                winsound.Beep(1319, 70)   # E6
+                winsound.Beep(1568, 110)  # G6
+            except Exception:
+                pass
+        threading.Thread(target=_play, daemon=True).start()
 
     def _abrir_pasta(self):
         if self._last_output_path:
