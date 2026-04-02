@@ -15,6 +15,32 @@ import webbrowser
 from processor import processar_arquivo
 
 
+def _criar_icone_github(size: int, cor: tuple):
+    """Renderiza o GitHub Mark (octocat simplificado) via Pillow."""
+    from PIL import Image, ImageDraw
+    scale = 4
+    s = size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = (cor[0], cor[1], cor[2], 255)
+    # Corpo principal (círculo)
+    d.ellipse([int(s*0.04), int(s*0.18), int(s*0.96), int(s*0.96)], fill=c)
+    # Orelha esquerda
+    d.polygon([
+        (int(s*0.04), int(s*0.44)),
+        (int(s*0.30), int(s*0.44)),
+        (int(s*0.22), int(s*0.02)),
+    ], fill=c)
+    # Orelha direita
+    d.polygon([
+        (int(s*0.70), int(s*0.44)),
+        (int(s*0.96), int(s*0.44)),
+        (int(s*0.78), int(s*0.02)),
+    ], fill=c)
+    resample = getattr(Image, "LANCZOS", getattr(Image, "ANTIALIAS", Image.BICUBIC))
+    return img.resize((size, size), resample)
+
+
 def _resource_path(relative: str) -> str:
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative)
@@ -113,6 +139,7 @@ class App2DFix(ctk.CTk):
         self._last_output_path: str | None = None
         self._themed_widgets: list[tuple] = []
         self._sub_rows: list[dict] = []  # dynamic substitution rows
+        self._theme_anim_gen: int = 0   # incremented on every toggle to cancel in-flight animations
 
         self._build_ui()
         self._atualizar_estado_botao()
@@ -160,10 +187,9 @@ class App2DFix(ctk.CTk):
         self._reg("theme_btn", self._theme_btn)
 
         self._github_btn = ctk.CTkButton(
-            header, text="GH", width=36, height=36,
-            font=("Segoe UI", 11, "bold"), fg_color="transparent",
+            header, image=self._github_icon, text="", width=36, height=36,
+            fg_color="transparent",
             hover_color=t["border"], corner_radius=8,
-            text_color=t["text_secondary"],
             command=self._abrir_github,
         )
         self._github_btn.grid(row=0, column=1, sticky="ne", padx=(0, 4))
@@ -174,38 +200,54 @@ class App2DFix(ctk.CTk):
         self._sep.pack(fill="x", pady=(0, 28))
         self._reg("border_line", self._sep)
 
-        # ── Two-column form ──────────────────────────────────────────────
-        form = ctk.CTkFrame(content, fg_color="transparent")
-        form.pack(fill="both", expand=True)
-        form.grid_columnconfigure(0, weight=1)
-        form.grid_columnconfigure(1, weight=1)
+        # ── Arquivos (dois campos lado a lado) ───────────────────────────
+        files_frame = ctk.CTkFrame(content, fg_color="transparent")
+        files_frame.pack(fill="x", pady=(0, 16))
+        files_frame.grid_columnconfigure(0, weight=1)
+        files_frame.grid_columnconfigure(1, weight=1)
 
-        # LEFT column — Files
-        left = ctk.CTkFrame(form, fg_color="transparent")
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 16))
-
-        self._make_file_field(left, "Arquivo de entrada", "var_entrada",
+        files_left = ctk.CTkFrame(files_frame, fg_color="transparent")
+        files_left.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+        self._make_file_field(files_left, "Arquivo de entrada", "var_entrada",
                               "Selecione o arquivo .txt", self._selecionar_entrada)
-        self._make_file_field(left, "Arquivo de saída", "var_saida",
+
+        files_right = ctk.CTkFrame(files_frame, fg_color="transparent")
+        files_right.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        self._make_file_field(files_right, "Arquivo de saída", "var_saida",
                               "Local para salvar o arquivo corrigido", self._selecionar_saida)
 
-        # RIGHT column — Substitutions (dynamic)
-        right = ctk.CTkFrame(form, fg_color="transparent")
-        right.grid(row=0, column=1, sticky="nsew", padx=(16, 0))
+        # ── Label da seção ────────────────────────────────────────────────
+        lbl_subs = ctk.CTkLabel(
+            content, text="Substituições", font=FONT_LABEL,
+            text_color=t["text_secondary"],
+        )
+        lbl_subs.pack(anchor="w", pady=(0, 6))
+        self._reg("text_secondary", lbl_subs)
 
-        self._subs_container = ctk.CTkFrame(right, fg_color="transparent")
-        self._subs_container.pack(fill="both", expand=True)
+        # ── Substituições — área com scroll ───────────────────────────────
+        self._subs_scroll = ctk.CTkScrollableFrame(
+            content,
+            fg_color=t["input_bg"],
+            scrollbar_button_color=t["border"],
+            scrollbar_button_hover_color=t["input_border"],
+            corner_radius=8,
+            border_width=1,
+            border_color=t["input_border"],
+        )
+        self._subs_scroll.pack(fill="both", expand=True)
+        self._subs_container = self._subs_scroll
+        self._reg("subs_scroll", self._subs_scroll)
 
         self._add_sub_row()
 
         self._btn_add_sub = ctk.CTkButton(
-            right, text="＋  Adicionar substituição", height=32,
+            content, text="＋  Adicionar substituição", height=32,
             font=FONT_SMALL, fg_color="transparent",
             border_color=t["border"], border_width=1,
             hover_color=t["border"], corner_radius=BTN_R,
             text_color=ACCENT, command=self._add_sub_row,
         )
-        self._btn_add_sub.pack(fill="x", pady=(4, 0))
+        self._btn_add_sub.pack(fill="x", pady=(6, 0))
         self._reg("add_sub_btn", self._btn_add_sub)
 
         # ── Bottom area ──────────────────────────────────────────────────
@@ -561,21 +603,24 @@ class App2DFix(ctk.CTk):
     def _abrir_github(self):
         webbrowser.open(GITHUB_URL)
 
-    # ── Theme toggle (instant in-place recolor) ──────────────────────────────
-    def _toggle_theme(self):
-        new_theme = "light" if self._theme == "dark" else "dark"
-        self._theme = new_theme
-        self._t = THEMES[new_theme]
-        t = self._t
+    # ── Theme toggle — animated interpolation ────────────────────────────────
 
-        ctk.set_appearance_mode(new_theme)
+    @staticmethod
+    def _lerp_hex(c1: str, c2: str, t: float) -> str:
+        """Interpolate between two #RRGGBB hex colors."""
+        r = round(int(c1[1:3], 16) + (int(c2[1:3], 16) - int(c1[1:3], 16)) * t)
+        g = round(int(c1[3:5], 16) + (int(c2[3:5], 16) - int(c1[3:5], 16)) * t)
+        b = round(int(c1[5:7], 16) + (int(c2[5:7], 16) - int(c1[5:7], 16)) * t)
+        return f"#{r:02X}{g:02X}{b:02X}"
 
-        icon = "☀" if new_theme == "dark" else "☾"
-        self._theme_btn.configure(text=icon)
+    @staticmethod
+    def _ease_in_out(t: float) -> float:
+        """Cubic ease-in-out — smooth start and end."""
+        return t * t * (3.0 - 2.0 * t)
 
-        # Single-pass recolor — no rebuild, no animation loop
+    def _apply_theme_colors(self, t: dict):
+        """Apply a color dict to all registered widgets without rebuilding."""
         self.configure(fg_color=t["bg"])
-
         for role, w in self._themed_widgets:
             try:
                 if role == "frame_bg":
@@ -599,8 +644,46 @@ class App2DFix(ctk.CTk):
                 elif role == "rm_btn":
                     w.configure(hover_color=t["border"])
                 elif role == "github_btn":
-                    w.configure(hover_color=t["border"], text_color=t["text_secondary"])
+                    w.configure(hover_color=t["border"])
+                elif role == "subs_scroll":
+                    w.configure(
+                        fg_color=t["input_bg"],
+                        scrollbar_button_color=t["border"],
+                        scrollbar_button_hover_color=t["input_border"],
+                        border_color=t["input_border"],
+                    )
             except Exception:
                 pass
 
-        self._atualizar_estado_botao()
+    def _animate_theme(self, t_from: dict, t_to: dict, steps: int = 14, duration_ms: int = 220):
+        """Drive a non-blocking color interpolation between two theme palettes."""
+        step_ms = max(1, duration_ms // steps)
+        gen = self._theme_anim_gen  # snapshot — used to abort if another toggle fires
+
+        def step(i: int):
+            if gen != self._theme_anim_gen:
+                return  # a newer toggle fired; let it own the animation
+            progress = self._ease_in_out(i / steps)
+            current = {k: self._lerp_hex(t_from[k], t_to[k], progress) for k in t_to}
+            self._apply_theme_colors(current)
+            if i < steps:
+                self.after(step_ms, lambda: step(i + 1))
+            else:
+                # Sync CTk's internal mode once — colors already match, no visual change.
+                ctk.set_appearance_mode(self._theme)
+                self._atualizar_estado_botao()
+
+        step(1)
+
+    def _toggle_theme(self):
+        t_from = dict(self._t)  # snapshot current palette before switching
+        new_theme = "light" if self._theme == "dark" else "dark"
+        self._theme = new_theme
+        self._t = THEMES[new_theme]
+
+        icon = "☀" if new_theme == "dark" else "☾"
+        self._theme_btn.configure(text=icon)
+
+        # Bump generation to cancel any in-flight animation, then start a new one
+        self._theme_anim_gen += 1
+        self._animate_theme(t_from, THEMES[new_theme])
