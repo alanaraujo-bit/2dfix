@@ -186,6 +186,13 @@ class App2DFix(ctk.CTk):
         self._theme_btn.grid(row=0, column=2, sticky="ne")
         self._reg("theme_btn", self._theme_btn)
 
+        # Ícone GitHub (criado aqui onde o CTk já está inicializado)
+        _ic_dark = _criar_icone_github(16, (139, 148, 158))
+        _ic_light = _criar_icone_github(16, (87, 96, 106))
+        self._github_icon = ctk.CTkImage(
+            light_image=_ic_light, dark_image=_ic_dark, size=(16, 16)
+        )
+
         self._github_btn = ctk.CTkButton(
             header, image=self._github_icon, text="", width=36, height=36,
             fg_color="transparent",
