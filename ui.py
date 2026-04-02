@@ -10,6 +10,7 @@ import platform
 import subprocess
 import threading
 import time
+import webbrowser
 
 from processor import processar_arquivo
 
@@ -44,6 +45,7 @@ ACCENT = "#1E90FF"
 ACCENT_HOVER = "#1565C0"
 SUCCESS = "#2ECC71"
 ERROR = "#E74C3C"
+GITHUB_URL = "https://github.com/alanaraujo-bit/2dfix"
 
 THEMES = {
     "dark": {
@@ -154,8 +156,18 @@ class App2DFix(ctk.CTk):
             text_color=t["text_secondary"],
             command=self._toggle_theme,
         )
-        self._theme_btn.grid(row=0, column=1, sticky="ne")
+        self._theme_btn.grid(row=0, column=2, sticky="ne")
         self._reg("theme_btn", self._theme_btn)
+
+        self._github_btn = ctk.CTkButton(
+            header, text="GH", width=36, height=36,
+            font=("Segoe UI", 11, "bold"), fg_color="transparent",
+            hover_color=t["border"], corner_radius=8,
+            text_color=t["text_secondary"],
+            command=self._abrir_github,
+        )
+        self._github_btn.grid(row=0, column=1, sticky="ne", padx=(0, 4))
+        self._reg("github_btn", self._github_btn)
 
         # Separator
         self._sep = ctk.CTkFrame(content, fg_color=t["border"], height=1)
@@ -546,6 +558,9 @@ class App2DFix(ctk.CTk):
         if self._last_output_path:
             _open_folder(self._last_output_path)
 
+    def _abrir_github(self):
+        webbrowser.open(GITHUB_URL)
+
     # ── Theme toggle (instant in-place recolor) ──────────────────────────────
     def _toggle_theme(self):
         new_theme = "light" if self._theme == "dark" else "dark"
@@ -583,6 +598,8 @@ class App2DFix(ctk.CTk):
                     w.configure(border_color=t["border"], hover_color=t["border"])
                 elif role == "rm_btn":
                     w.configure(hover_color=t["border"])
+                elif role == "github_btn":
+                    w.configure(hover_color=t["border"], text_color=t["text_secondary"])
             except Exception:
                 pass
 
