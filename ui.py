@@ -139,7 +139,6 @@ class App2DFix(ctk.CTk):
         self._last_output_path: str | None = None
         self._themed_widgets: list[tuple] = []
         self._sub_rows: list[dict] = []  # dynamic substitution rows
-        self._theme_anim_gen: int = 0   # incremented on every toggle to cancel in-flight animations
 
         self._build_ui()
         self._atualizar_estado_botao()
@@ -175,17 +174,6 @@ class App2DFix(ctk.CTk):
         self._lbl_subtitle.pack(side="left", padx=(8, 0), pady=(4, 0))
         self._reg("text_secondary", self._lbl_subtitle)
 
-        icon = "☀" if self._theme == "dark" else "☾"
-        self._theme_btn = ctk.CTkButton(
-            header, text=icon, width=36, height=36,
-            font=("Segoe UI", 16), fg_color="transparent",
-            hover_color=t["border"], corner_radius=8,
-            text_color=t["text_secondary"],
-            command=self._toggle_theme,
-        )
-        self._theme_btn.grid(row=0, column=2, sticky="ne")
-        self._reg("theme_btn", self._theme_btn)
-
         # Ícone GitHub (criado aqui onde o CTk já está inicializado)
         _ic_dark = _criar_icone_github(16, (139, 148, 158))
         _ic_light = _criar_icone_github(16, (87, 96, 106))
@@ -199,7 +187,7 @@ class App2DFix(ctk.CTk):
             hover_color=t["border"], corner_radius=8,
             command=self._abrir_github,
         )
-        self._github_btn.grid(row=0, column=1, sticky="ne", padx=(0, 4))
+        self._github_btn.grid(row=0, column=1, sticky="ne")
         self._reg("github_btn", self._github_btn)
 
         # Separator
@@ -306,6 +294,16 @@ class App2DFix(ctk.CTk):
         )
         self._btn_open_folder.pack(side="left", expand=True, fill="x", padx=(6, 0))
         self._reg("outline_btn", self._btn_open_folder)
+
+        self._btn_limpar = ctk.CTkButton(
+            btn_row, text="Limpar", height=36,
+            font=FONT_SMALL, fg_color="transparent",
+            border_color=t["border"], border_width=1,
+            hover_color=t["border"], corner_radius=BTN_R,
+            text_color=t["text_secondary"], command=self._limpar_resultado,
+        )
+        self._btn_limpar.pack(side="left", expand=True, fill="x", padx=(6, 0))
+        self._reg("clear_btn", self._btn_limpar)
 
         # Error label (hidden)
         self._lbl_error = ctk.CTkLabel(
@@ -610,87 +608,7 @@ class App2DFix(ctk.CTk):
     def _abrir_github(self):
         webbrowser.open(GITHUB_URL)
 
-    # ── Theme toggle — animated interpolation ────────────────────────────────
-
-    @staticmethod
-    def _lerp_hex(c1: str, c2: str, t: float) -> str:
-        """Interpolate between two #RRGGBB hex colors."""
-        r = round(int(c1[1:3], 16) + (int(c2[1:3], 16) - int(c1[1:3], 16)) * t)
-        g = round(int(c1[3:5], 16) + (int(c2[3:5], 16) - int(c1[3:5], 16)) * t)
-        b = round(int(c1[5:7], 16) + (int(c2[5:7], 16) - int(c1[5:7], 16)) * t)
-        return f"#{r:02X}{g:02X}{b:02X}"
-
-    @staticmethod
-    def _ease_in_out(t: float) -> float:
-        """Cubic ease-in-out — smooth start and end."""
-        return t * t * (3.0 - 2.0 * t)
-
-    def _apply_theme_colors(self, t: dict):
-        """Apply a color dict to all registered widgets without rebuilding."""
-        self.configure(fg_color=t["bg"])
-        for role, w in self._themed_widgets:
-            try:
-                if role == "frame_bg":
-                    w.configure(fg_color=t["bg"])
-                elif role == "text_secondary":
-                    w.configure(text_color=t["text_secondary"])
-                elif role == "theme_btn":
-                    w.configure(hover_color=t["border"], text_color=t["text_secondary"])
-                elif role == "border_line":
-                    w.configure(fg_color=t["border"])
-                elif role == "entry":
-                    w.configure(fg_color=t["input_bg"], border_color=t["input_border"], text_color=t["text"])
-                elif role == "browse_btn":
-                    w.configure(fg_color=t["input_bg"], hover_color=t["border"], border_color=t["input_border"], text_color=t["text_secondary"])
-                elif role == "outline_btn":
-                    w.configure(hover_color=t["border"])
-                elif role == "progress_bg":
-                    w.configure(fg_color=t["border"])
-                elif role == "add_sub_btn":
-                    w.configure(border_color=t["border"], hover_color=t["border"])
-                elif role == "rm_btn":
-                    w.configure(hover_color=t["border"])
-                elif role == "github_btn":
-                    w.configure(hover_color=t["border"])
-                elif role == "subs_scroll":
-                    w.configure(
-                        fg_color=t["input_bg"],
-                        scrollbar_button_color=t["border"],
-                        scrollbar_button_hover_color=t["input_border"],
-                        border_color=t["input_border"],
-                    )
-            except Exception:
-                pass
-
-    def _animate_theme(self, t_from: dict, t_to: dict, steps: int = 14, duration_ms: int = 220):
-        """Drive a non-blocking color interpolation between two theme palettes."""
-        step_ms = max(1, duration_ms // steps)
-        gen = self._theme_anim_gen  # snapshot — used to abort if another toggle fires
-
-        def step(i: int):
-            if gen != self._theme_anim_gen:
-                return  # a newer toggle fired; let it own the animation
-            progress = self._ease_in_out(i / steps)
-            current = {k: self._lerp_hex(t_from[k], t_to[k], progress) for k in t_to}
-            self._apply_theme_colors(current)
-            if i < steps:
-                self.after(step_ms, lambda: step(i + 1))
-            else:
-                # Sync CTk's internal mode once — colors already match, no visual change.
-                ctk.set_appearance_mode(self._theme)
-                self._atualizar_estado_botao()
-
-        step(1)
-
-    def _toggle_theme(self):
-        t_from = dict(self._t)  # snapshot current palette before switching
-        new_theme = "light" if self._theme == "dark" else "dark"
-        self._theme = new_theme
-        self._t = THEMES[new_theme]
-
-        icon = "☀" if new_theme == "dark" else "☾"
-        self._theme_btn.configure(text=icon)
-
-        # Bump generation to cancel any in-flight animation, then start a new one
-        self._theme_anim_gen += 1
-        self._animate_theme(t_from, THEMES[new_theme])
+    def _limpar_resultado(self):
+        self._result_frame.pack_forget()
+        self._last_output_path = None
+        self._atualizar_estado_botao()
